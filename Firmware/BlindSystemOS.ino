@@ -40,12 +40,6 @@ void setup()
   EEPROM.get(3, read_key);
   if(read_key!=EEPROM_KEY)
   {
-    for(int id=0; id<50; id++)
-    {
-      EEPROM.put(id, 0);
-    }
-    EEPROM.put(3, EEPROM_KEY);
-    EEPROM.commit();
     max_pos=-1;
   }
   else
@@ -54,8 +48,12 @@ void setup()
   }
 
   
+  
 
   Serial.begin(115200);
+  
+  Serial.print("max_pos=");
+  Serial.println(max_pos);
   //motor.reverse(true);
 
   //oled.init();
@@ -208,6 +206,7 @@ void loop()
     {
       if(max_pos==-1) max_pos=steps_counter[1];
       EEPROM.put(10, max_pos);
+      EEPROM.put(3, EEPROM_KEY);
       EEPROM.commit();
 
       Serial.print("max_pos=");
