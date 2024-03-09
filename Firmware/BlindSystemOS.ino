@@ -2,10 +2,12 @@
 #include "Blinds.h"
 #include "Sensors.h"
 #include <GyverOLED.h>
+#include <EEPROM.h>
 //#include <GyverMotor2.h>
 
 #define OLED_TIMEOUT 50
 
+TaskHandle_t Task0;
 
 //GyverOLED<SSD1306_128x64, OLED_BUFFER, OLED_SPI, 16, 2, 15> oled;  // for ESP32
 //GMotor2<DRIVER2WIRE> motor(15, 16);
@@ -18,12 +20,41 @@ int old_state;
 volatile int steps_counter[10];
 bool new_data;
 bool soft_endstps[10][2];
-int max_pos;
+int max_pos=-1;
 int motor_state;
 int enc_last_read;
+int curr_tick[10];
+int target_tick[10];
+int old_shade_target[10];
+int allow_dir=true;
+bool positioning=false;
 
+#define EEPROM_KEY 3
 void setup()
-{
+{ 
+  xTaskCreatePinnedToCore(core0, "Task0", 10000, NULL, 0, &Task0, 0);
+
+  EEPROM.begin(100);
+
+  int read_key;
+  EEPROM.get(3, read_key);
+  if(read_key!=EEPROM_KEY)
+  {
+    for(int id=0; id<50; id++)
+    {
+      EEPROM.put(id, 0);
+    }
+    EEPROM.put(3, EEPROM_KEY);
+    EEPROM.commit();
+    max_pos=-1;
+  }
+  else
+  {
+    EEPROM.get(10, max_pos);
+  }
+
+  
+
   Serial.begin(115200);
   //motor.reverse(true);
 
@@ -75,143 +106,128 @@ void setup()
   pinMode(27, OUTPUT);
 
   motor('B');
+  positioning=true;
   
   window_shade_state[3]=0;
-  curr_shade_state[1]=50;
-  delay(2000);
 
   last_tick_timer=millis();
   endstop_timer=millis();
   enc_last_read=!digitalRead(26);
+
+  curr_tick[1]=5;
+  window_shade_state[3]=0;
+  curr_shade_state[1]=0;
 }
 
 void loop()
 {
-  if(enc_last_read==!digitalRead(26))
+  if(Serial.available())
   {
-    enc_last_read=digitalRead(26);
-    if(millis()-debounce_timer>=50)
+    char inp=Serial.read();
+    if(inp=='p')
     {
-      last_tick_timer=millis();
-      soft_endstps[1][1]=false;
-      soft_endstps[1][0]=false;
-      debounce_timer=millis();
+      Serial.print("curr_tick=");
+      Serial.println(curr_tick[1]);
+      Serial.print("target_tick=");
+      Serial.println(target_tick[1]);
+      Serial.print("window_shade_state[3]=");
+      Serial.println(window_shade_state[3]);
+    }
+  }
+
+  if(max_pos!=-1 && !positioning)
+  {
+    curr_tick[1]=steps_counter[1];//map(curr_shade_state[1], 0, 100, 5, max_pos-5);
+    target_tick[1]=map(window_shade_state[3], 0, 100, 10, max_pos-10);
+
+    if(curr_tick[1]-target_tick[1]>0) motor('B');
+    else if(curr_tick[1]-target_tick[1]<0) motor('F');
+
+    curr_tick[1]+=motor('G');
+    if(motor('G')==-1) 
+    {
+      if(curr_tick[1]<target_tick[1]) 
+      {
+        motor('S');
+        curr_shade_state[1]=window_shade_state[3];
+      }
+    }
+    else if(motor('G')==1) 
+    {
+      if(curr_tick[1]>target_tick[1]) 
+      {
+        motor('S');
+        curr_shade_state[1]=window_shade_state[3];
+      }
+    }
+  }
+
+//--
+
+  if(max_pos==-1 || positioning)
+  {
+    if(millis()-last_tick_timer>=800 && millis()-endstop_timer>=5000)
+    {
       if(motor('G')==1)
       {
-        steps_counter[1]++;
-      }
+        soft_endstps[1][1]=true;
+        soft_endstps[1][0]=false;
+      }    
       else if(motor('G')==-1)
       {
-        steps_counter[1]--;
+        soft_endstps[1][0]=true;
+        soft_endstps[1][1]=false;
+      } 
+      else
+      {
+        ;
       }
-      Serial.println(steps_counter[1]);
     }
-  }
-  /*
-  if (millis() - oled_refresh_timer >= OLED_TIMEOUT)
-  {
-    oled_refresh_timer = millis();
-    oled.clear();
-    oled.home();
-    oled.setScale(1);
-    oled.print("Temp: ");
-    //oled.print(bme.readTemperature());
-    //oled.print(temp);
-    oled.setCursor(0, 1);
-    oled.print("Hum: ");
-    //oled.print(bme.readHumidity());
-    oled.setCursor(0, 2);
-    oled.print("Main Shade: ");
-    oled.print(window_shade_state[3]);
-    oled.print("%");
-    oled.setCursor(0, 3);
-    oled.print("Secondary Shade: ");
-    oled.print(window_shade_state[1]);
-    oled.print("%");
-
-    oled.update();
-  }
-*/
-
-  /*
-  if(window_shade_state[3]>55 && !soft_endstps[1][1])
-  {
-    motor.setSpeed(255);
-  }
-  else if(window_shade_state[3]<45 && !soft_endstps[1][0])
-  {
-    motor.setSpeed(-255);
-  }
-  if(window_shade_state[3]>=45 && window_shade_state[3]<=55 || soft_endstps[1][1])
-  {
-    motor.setSpeed(0);
-  }
-  */
-/*
-  if(target_shade_state[1]<window_shade_state[3])
-  {
-    motor.setSpeed(-255);
-  }
-  else if(target_shade_state[1]>window_shade_state[3])
-  {
-    motor.setSpeed(255);
-  }
-  else if(target_shade_state[1]==window_shade_state[3])
-  {
-    //motor.setSpeed(0);
-  }
-*/
-
-  //Serial.print("steps_counter: ");
-  //Serial.println(steps_counter[1]);
-
-  if(millis()-last_tick_timer>=800 && millis()-endstop_timer>=5000)
-  {
-    if(motor('G')==1)
+    //--
+    if(soft_endstps[1][0])
     {
-      soft_endstps[1][1]=true;
+      positioning=false;
       soft_endstps[1][0]=false;
-    }    
-    else if(motor('G')==-1)
-    {
-      soft_endstps[1][0]=true;
       soft_endstps[1][1]=false;
-    } 
-    else
-    {
-      ;
-    }
-  }
-  //--
-  if(soft_endstps[1][0])
-  {
-    soft_endstps[1][0]=false;
-    soft_endstps[1][1]=false;
-    steps_counter[1]=0;
+      steps_counter[1]=0;
 
-    window_shade_state[3]=100;
-    curr_shade_state[1]=0;
-    motor('F');
-    delay(500);
-    //target_shade_state[1]=100;
-    endstop_timer=millis();
+      window_shade_state[3]=0;
+      curr_shade_state[1]=0;
+      motor('F');
+      delay(500);
+      if(max_pos!=-1)
+      {
+        motor('S');
+      }
+      //target_shade_state[1]=100;
+      endstop_timer=millis();
+      curr_tick[1]=0;
+      allow_dir=true;
+    }
+    if(soft_endstps[1][1])
+    {
+      if(max_pos==-1) max_pos=steps_counter[1];
+      EEPROM.put(10, max_pos);
+      EEPROM.commit();
+
+      Serial.print("max_pos=");
+      Serial.println(max_pos);
+      soft_endstps[1][1]=false;
+      window_shade_state[3]=100;
+      motor('B');
+      delay(500);
+      motor('S');
+      //target_shade_state[1]=100;
+      curr_shade_state[1]=100;
+      curr_tick[1]=max_pos;
+      allow_dir=true;
+      positioning=false;
+    }
+    //--
+    if(soft_endstps[1][1]) Serial.println("soft_endstps UP");
+    if(soft_endstps[1][0]) Serial.println("soft_endstps DOWN");
   }
-  if(soft_endstps[1][1])
-  {
-    max_pos=steps_counter[1];
-    Serial.print("max_pos=");
-    Serial.println(max_pos);
-    soft_endstps[1][1]=false;
-    window_shade_state[3]=100;
-    motor('B');
-    delay(500);
-    motor('S');
-    //target_shade_state[1]=100;
-    curr_shade_state[1]=100;
-  }
-  //--
-  if(soft_endstps[1][1]) Serial.println("soft_endstps UP");
-  if(soft_endstps[1][0]) Serial.println("soft_endstps DOWN");
+  
   //--
   //--
   homeSpan.poll();
