@@ -60,7 +60,7 @@ void setup()
   //oled.setContrast(255);
 
   homeSpan.setPairingCode("06092008");
-  homeSpan.begin(Category::Bridges, "ESP32 Arsenii", "ESP32-Arsenii", "Arsenii'sTechnologies");
+  homeSpan.begin(Category::Bridges, "ESP32 Arsenii", "1.0.0", "Arsenii's Technologies Inc.", "BlindDriver 1", "AT00001/U", "1.0.0");
 
   homeSpan.setWifiCredentials("i20", "yanatarsnazsof5");
 
